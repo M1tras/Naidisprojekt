@@ -1,22 +1,47 @@
 'use strict';
 
-/** @type {import('sequelize-cli').Migration} */
 module.exports = {
   async up (queryInterface, Sequelize) {
-    /**
-     * Add altering commands here.
-     *
-     * Example:
-     * await queryInterface.createTable('users', { id: Sequelize.INTEGER });
-     */
+    await queryInterface.createTable('EnergyReadings', {
+      id: {
+        allowNull: false,
+        autoIncrement: true,
+        primaryKey: true,
+        type: Sequelize.INTEGER
+      },
+
+      timestamp: {
+        type: Sequelize.DATE,
+        allowNull: false
+      },
+
+      location: {
+        type: Sequelize.STRING,
+        allowNull: false
+      },
+
+      price_eur_mwh: {
+        type: Sequelize.FLOAT,
+        allowNull: true
+      },
+
+      source: {
+        type: Sequelize.STRING
+      },
+
+      createdAt: {
+        allowNull: false,
+        type: Sequelize.DATE
+      },
+
+      updatedAt: {
+        allowNull: false,
+        type: Sequelize.DATE
+      }
+    });
   },
 
-  async down (queryInterface, Sequelize) {
-    /**
-     * Add reverting commands here.
-     *
-     * Example:
-     * await queryInterface.dropTable('users');
-     */
+  async down (queryInterface) {
+    await queryInterface.dropTable('EnergyReadings');
   }
 };
