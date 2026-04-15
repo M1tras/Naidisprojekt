@@ -1,6 +1,6 @@
 {
   "development": {
-    "username": "alvin_user",
+    "username": "root",
     "password": "qwerty",
     "database": "energy_db",
     "host": "127.0.0.1",
@@ -8,14 +8,14 @@
     "logging": false
   },
   "test": {
-    "username": "alvin_user",
+    "username": "root",
     "password": "qwerty",
     "database": "energy_db",
     "host": "127.0.0.1",
     "dialect": "mysql"
   },
   "production": {
-    "username": "alvin_user",
+    "username": "root",
     "password": "qwerty",
     "database": "energy_db",
     "host": "127.0.0.1",
