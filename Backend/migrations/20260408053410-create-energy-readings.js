@@ -45,3 +45,6 @@ module.exports = {
     await queryInterface.dropTable('EnergyReadings');
   }
 };
+await queryInterface.addIndex('EnergyReadings', ['timestamp', 'location'], {
+  unique: true
+});

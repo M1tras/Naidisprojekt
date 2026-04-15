@@ -10,6 +10,30 @@ const path = require("path");
 
 const app = express();
 
+app.post("/api/sync/prices", async (req, res) => {
+  try {
+    const axios = require("axios");
+
+    const start = "2025-03-20T00:00:00Z";
+    const end = "2025-03-20T23:59:59Z";
+
+    const url =
+      "https://dashboard.elering.ee/api/nps/price" +
+      `?start=${start}&end=${end}&fields=ee`;
+
+    const response = await axios.get(url);
+
+    res.json({
+      ok: true,
+      dataPreview: response.data
+    });
+
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "PRICE_API_UNAVAILABLE" });
+  }
+});
+
 app.use(cors());
 app.use(express.json());
 
@@ -114,4 +138,60 @@ const PORT = 3000;
 
 app.listen(PORT, () => {
   console.log(`Server running on http://localhost:${PORT}`);
+});
+
+const axios = require("axios");
+
+app.post("/api/sync/prices", async (req, res) => {
+  try {
+    let { start, end, location } = req.body;
+
+    // default values
+    const now = new Date();
+
+    if (!start || !end) {
+      start = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate(), 0, 0, 0)).toISOString();
+      end = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate(), 23, 59, 59)).toISOString();
+    }
+
+    if (!location) location = "EE";
+
+    // convert EE -> ee
+    const map = { EE: "ee", LV: "lv", FI: "fi" };
+    const apiLocation = map[location];
+
+    const url = `https://dashboard.elering.ee/api/nps/price?start=${start}&end=${end}&fields=${apiLocation}`;
+
+    const response = await axios.get(url);
+
+    const data = response.data?.data?.nps?.[apiLocation];
+
+    if (!data) {
+      return res.status(500).json({ error: "PRICE_API_UNAVAILABLE" });
+    }
+
+    let upserted = 0;
+
+    for (const item of data) {
+      const timestamp = new Date(item.timestamp * 1000); // Elering uses unix
+
+      await EnergyReading.upsert({
+        timestamp,
+        location,
+        price_eur_mwh: item.price,
+        source: "API"
+      });
+
+      upserted++;
+    }
+
+    res.json({
+      message: "sync complete",
+      upserted
+    });
+
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "PRICE_API_UNAVAILABLE" });
+  }
 });

@@ -13,6 +13,12 @@ module.exports = (sequelize, DataTypes) => {
     },
     source: {
       type: DataTypes.STRING
-    }
+    },
+    indexes: [
+        {
+            unique: true,
+            fields: ["timestamp", "location"]
+        }
+    ]
   });
 };
