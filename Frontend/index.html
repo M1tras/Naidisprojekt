@@ -23,5 +23,69 @@
       });
   </script>
 
+  <hr>
+
+  <h2>Sync Electricity Prices</h2>
+
+  <label>Start:</label><br>
+  <input type="datetime-local" id="start"><br><br>
+
+  <label>End:</label><br>
+  <input type="datetime-local" id="end"><br><br>
+
+  <label>Location:</label><br>
+  <select id="location">
+    <option value="EE">EE</option>
+    <option value="LV">LV</option>
+    <option value="FI">FI</option>
+  </select><br><br>
+
+  <button id="syncBtn">Sync Prices</button>
+
+  <p id="syncStatus"></p>
+
+  <script>
+    const btn = document.getElementById("syncBtn");
+    const status = document.getElementById("syncStatus");
+
+    btn.addEventListener("click", async () => {
+      btn.disabled = true;
+      btn.innerText = "Loading...";
+      status.innerText = "";
+
+      try {
+        const start = document.getElementById("start").value;
+        const end = document.getElementById("end").value;
+        const location = document.getElementById("location").value;
+
+        const response = await fetch("http://localhost:3000/api/sync/prices", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json"
+          },
+          body: JSON.stringify({
+            start: start ? new Date(start).toISOString() : null,
+            end: end ? new Date(end).toISOString() : null,
+            location
+          })
+        });
+
+        const data = await response.json();
+
+        if (response.ok) {
+          status.innerText = "Hinnad sünkrooniti edukalt.";
+        } else {
+          status.innerText = "Viga: " + (data.error || "Unknown error");
+        }
+
+      } catch (err) {
+        status.innerText = "Cannot connect to backend";
+      }
+
+      btn.disabled = false;
+      btn.innerText = "Sync Prices";
+    });
+  </script>
+
 </body>
 </html>
