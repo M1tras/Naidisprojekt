@@ -9,48 +9,48 @@ const { EnergyReading, sequelize } = require("./models");
 
 const app = express();
 
-// MIDDLEWARE (IMPORTANT)
 app.use(cors());
 app.use(express.json());
 
 
-// HEALTH CHECK
+// =====================
+// HEALTH
+// =====================
 app.get("/api/health", async (req, res) => {
   try {
     await sequelize.authenticate();
     res.json({ status: "ok", db: "ok" });
   } catch (err) {
+    console.error(err);
     res.status(500).json({ status: "error", db: "down" });
   }
 });
 
-// SYNC PRICES (ELERING)
+
+// =====================
+// SYNC PRICES (STABLE VERSION)
+// =====================
 app.post("/api/sync/prices", async (req, res) => {
   try {
-    let { start, end, location } = req.body;
+    let { start, end, location } = req.body || {};
+
+    const toISO = (d) => new Date(d).toISOString();
 
     const now = new Date();
 
-    // default: today UTC
     if (!start || !end) {
-      start = new Date(Date.UTC(
-        now.getUTCFullYear(),
-        now.getUTCMonth(),
-        now.getUTCDate(),
-        0, 0, 0
-      )).toISOString();
+      const s = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate(), 0, 0, 0));
+      const e = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate(), 23, 59, 59));
 
-      end = new Date(Date.UTC(
-        now.getUTCFullYear(),
-        now.getUTCMonth(),
-        now.getUTCDate(),
-        23, 59, 59
-      )).toISOString();
+      start = toISO(s);
+      end = toISO(e);
+    } else {
+      start = toISO(start);
+      end = toISO(end);
     }
 
     if (!location) location = "EE";
 
-    // internal -> external mapping
     const map = { EE: "ee", LV: "lv", FI: "fi" };
     const apiLocation = map[location];
 
@@ -58,23 +58,29 @@ app.post("/api/sync/prices", async (req, res) => {
       return res.status(400).json({ error: "INVALID_LOCATION" });
     }
 
-    const url =
-      `https://dashboard.elering.ee/api/nps/price` +
-      `?start=${start}&end=${end}&fields=${apiLocation}`;
+    // IMPORTANT: correct Elering endpoint usage
+    const url = `https://dashboard.elering.ee/api/nps/price?start=${start}&end=${end}`;
+
+    console.log("🔥 REQUEST:", url);
 
     const response = await axios.get(url);
 
-    // IMPORTANT: real structure
-    const data = response.data?.data?.[apiLocation];
+    const data = response.data?.data?.ee;
 
     if (!Array.isArray(data)) {
-      return res.status(500).json({ error: "PRICE_API_UNAVAILABLE" });
+      return res.status(500).json({
+        error: "PRICE_API_UNAVAILABLE",
+        debug: response.data
+      });
     }
 
-    let upserted = 0;
+    let count = 0;
 
     for (const item of data) {
+      if (!item?.timestamp || item.price == null) continue;
+
       const timestamp = new Date(item.timestamp * 1000);
+      if (isNaN(timestamp.getTime())) continue;
 
       await EnergyReading.upsert({
         timestamp,
@@ -83,27 +89,34 @@ app.post("/api/sync/prices", async (req, res) => {
         source: "API"
       });
 
-      upserted++;
+      count++;
     }
 
     res.json({
       message: "sync complete",
-      inserted_or_updated: upserted
+      inserted_or_updated: count
     });
 
   } catch (err) {
-    console.error("SYNC ERROR:", err.message);
-    res.status(500).json({ error: "PRICE_API_UNAVAILABLE" });
+    console.error("SYNC ERROR:", err.response?.data || err.message);
+
+    res.status(500).json({
+      error: "PRICE_API_UNAVAILABLE",
+      debug: err.response?.data || err.message
+    });
   }
 });
 
 
-// READINGS API
+// =====================
+// READINGS (FOR DASHBOARD)
+// =====================
 app.get("/api/readings", async (req, res) => {
   try {
     const { start, end, location } = req.query;
 
     const allowed = ["EE", "LV", "FI"];
+
     if (!location || !allowed.includes(location)) {
       return res.status(400).json({ error: "INVALID_LOCATION" });
     }
@@ -112,7 +125,7 @@ app.get("/api/readings", async (req, res) => {
       return res.status(400).json({ error: "MISSING_DATE_RANGE" });
     }
 
-    const readings = await EnergyReading.findAll({
+    const data = await EnergyReading.findAll({
       where: {
         location,
         timestamp: {
@@ -122,16 +135,18 @@ app.get("/api/readings", async (req, res) => {
       order: [["timestamp", "ASC"]]
     });
 
-    res.json(readings);
+    res.json(data);
 
   } catch (err) {
-    console.error("READINGS ERROR:", err.message);
+    console.error(err);
     res.status(500).json({ error: "FAILED_TO_FETCH" });
   }
 });
 
 
+// =====================
 // START SERVER
+// =====================
 const PORT = 3000;
 
 app.listen(PORT, () => {

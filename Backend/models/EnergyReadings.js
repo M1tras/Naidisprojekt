@@ -1,24 +1,39 @@
 module.exports = (sequelize, DataTypes) => {
-  return sequelize.define("EnergyReading", {
-    timestamp: {
-    type: DataTypes.DATE,
-    allowNull: false
+  const EnergyReading = sequelize.define("EnergyReading", {
+    id: {
+      type: DataTypes.INTEGER,
+      autoIncrement: true,
+      primaryKey: true
     },
-    location: DataTypes.STRING,
-    price_eur_mwh: DataTypes.FLOAT,
-    source: DataTypes.STRING,
+
+    timestamp: {
+      type: DataTypes.DATE,
+      allowNull: false
+    },
+
+    location: {
+      type: DataTypes.STRING,
+      allowNull: false
+    },
+
     price_eur_mwh: {
       type: DataTypes.FLOAT,
       allowNull: true
     },
+
     source: {
-      type: DataTypes.STRING
-    },
+      type: DataTypes.STRING,
+      allowNull: false
+    }
+  }, {
     indexes: [
-        {
-            unique: true,
-            fields: ["timestamp", "location"]
-        }
-    ]
+      {
+        unique: true,
+        fields: ["timestamp", "location"]
+      }
+    ],
+    timestamps: false // 🔥 väga oluline (väldib createdAt errorit)
   });
+
+  return EnergyReading;
 };

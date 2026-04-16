@@ -2,90 +2,167 @@
 <html>
 <head>
   <title>Energy Dashboard</title>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 </head>
 <body>
 
-  <h1>Health Check</h1>
-  <p id="status">Loading...</p>
+<h1>Energy Dashboard</h1>
 
-  <script>
-    fetch("http://localhost:3000/api/health")
-      .then(res => res.json())
-      .then(data => {
-        if (data.status === "ok") {
-          document.getElementById("status").innerText = "Backend OK";
-        } else {
-          document.getElementById("status").innerText = "Backend error";
-        }
-      })
-      .catch(() => {
-        document.getElementById("status").innerText = "Cannot connect to backend";
-      });
-  </script>
+<p id="status">Loading...</p>
 
-  <hr>
+<script>
+fetch("http://localhost:3000/api/health")
+  .then(res => res.json())
+  .then(data => {
+    document.getElementById("status").innerText =
+      data.status === "ok" ? "Backend OK" : "Backend error";
+  })
+  .catch(() => {
+    document.getElementById("status").innerText = "Cannot connect";
+  });
+</script>
 
-  <h2>Sync Electricity Prices</h2>
+<hr>
 
-  <label>Start:</label><br>
-  <input type="datetime-local" id="start"><br><br>
+<!-- SYNC -->
+<h2>Sync Electricity Prices</h2>
 
-  <label>End:</label><br>
-  <input type="datetime-local" id="end"><br><br>
+Start: <input type="datetime-local" id="start"><br><br>
+End: <input type="datetime-local" id="end"><br><br>
 
-  <label>Location:</label><br>
-  <select id="location">
-    <option value="EE">EE</option>
-    <option value="LV">LV</option>
-    <option value="FI">FI</option>
-  </select><br><br>
+Location:
+<select id="location">
+  <option value="EE">EE</option>
+  <option value="LV">LV</option>
+  <option value="FI">FI</option>
+</select><br><br>
 
-  <button id="syncBtn">Sync Prices</button>
+<button id="syncBtn">Sync Prices</button>
+<p id="syncStatus"></p>
 
-  <p id="syncStatus"></p>
+<hr>
 
-  <script>
-    const btn = document.getElementById("syncBtn");
-    const status = document.getElementById("syncStatus");
+<!-- DASHBOARD -->
+<h2>Dashboard</h2>
 
-    btn.addEventListener("click", async () => {
-      btn.disabled = true;
-      btn.innerText = "Loading...";
-      status.innerText = "";
+<button id="loadBtn">Load Dashboard Data</button>
 
-      try {
-        const start = document.getElementById("start").value;
-        const end = document.getElementById("end").value;
-        const location = document.getElementById("location").value;
+<canvas id="c1"></canvas>
+<canvas id="c2"></canvas>
+<canvas id="c3"></canvas>
+<canvas id="c4"></canvas>
 
-        const response = await fetch("http://localhost:3000/api/sync/prices", {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json"
-          },
-          body: JSON.stringify({
-            start: start ? new Date(start).toISOString() : null,
-            end: end ? new Date(end).toISOString() : null,
-            location
-          })
-        });
+<p id="dashStatus"></p>
 
-        const data = await response.json();
+<script>
+let charts = {};
 
-        if (response.ok) {
-          status.innerText = "Hinnad sünkrooniti edukalt.";
-        } else {
-          status.innerText = "Viga: " + (data.error || "Unknown error");
-        }
+// SYNC
+document.getElementById("syncBtn").onclick = async () => {
+  const res = await fetch("http://localhost:3000/api/sync/prices", {
+    method: "POST",
+    headers: {"Content-Type":"application/json"},
+    body: JSON.stringify({
+      start: document.getElementById("start").value,
+      end: document.getElementById("end").value,
+      location: document.getElementById("location").value
+    })
+  });
 
-      } catch (err) {
-        status.innerText = "Cannot connect to backend";
-      }
+  const data = await res.json();
+  document.getElementById("syncStatus").innerText =
+    res.ok ? "OK sync" : data.error;
+};
 
-      btn.disabled = false;
-      btn.innerText = "Sync Prices";
-    });
-  </script>
+
+// DASHBOARD LOAD
+document.getElementById("loadBtn").onclick = async () => {
+
+  const start = document.getElementById("start").value;
+  const end = document.getElementById("end").value;
+  const location = document.getElementById("location").value;
+
+  const res = await fetch(
+    `http://localhost:3000/api/readings?start=${start}&end=${end}&location=${location}`
+  );
+
+  const data = await res.json();
+
+  if (!data || data.length === 0) {
+    document.getElementById("dashStatus").innerText = "No data found";
+    return;
+  }
+
+  document.getElementById("dashStatus").innerText = "Loaded";
+
+  // 1 LINE
+  new Chart(c1, {
+    type: "line",
+    data: {
+      labels: data.map(d => new Date(d.timestamp).toLocaleString()),
+      datasets: [{ label: "Price", data: data.map(d => d.price_eur_mwh) }]
+    }
+  });
+
+  // 2 DAILY AVG
+  const days = {};
+  data.forEach(d => {
+    const day = new Date(d.timestamp).toISOString().split("T")[0];
+    days[day] = days[day] || [];
+    days[day].push(d.price_eur_mwh);
+  });
+
+  const daily = Object.entries(days).map(([k,v]) => ({
+    k,
+    avg: v.reduce((a,b)=>a+b)/v.length
+  }));
+
+  new Chart(c2, {
+    type: "bar",
+    data: {
+      labels: daily.map(x=>x.k),
+      datasets: [{ label:"Daily avg", data: daily.map(x=>x.avg) }]
+    }
+  });
+
+  // 3 AVG BY LOCATION
+  const loc = {};
+  data.forEach(d => {
+    loc[d.location] = loc[d.location] || [];
+    loc[d.location].push(d.price_eur_mwh);
+  });
+
+  const locAvg = Object.entries(loc).map(([k,v])=>({
+    k,
+    avg: v.reduce((a,b)=>a+b)/v.length
+  }));
+
+  new Chart(c3, {
+    type: "bar",
+    data: {
+      labels: locAvg.map(x=>x.k),
+      datasets: [{ label:"Avg", data: locAvg.map(x=>x.avg) }]
+    }
+  });
+
+  // 4 COMPARE (simple)
+  const groups = {EE:[],LV:[],FI:[]};
+
+  data.forEach(d => groups[d.location]?.push(d));
+
+  new Chart(c4, {
+    type: "line",
+    data: {
+      labels: groups.EE.map(x=>new Date(x.timestamp).toLocaleTimeString()),
+      datasets: [
+        {label:"EE", data: groups.EE.map(x=>x.price_eur_mwh)},
+        {label:"LV", data: groups.LV.map(x=>x.price_eur_mwh)},
+        {label:"FI", data: groups.FI.map(x=>x.price_eur_mwh)}
+      ]
+    }
+  });
+};
+</script>
 
 </body>
 </html>
